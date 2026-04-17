@@ -60,8 +60,15 @@ export default function AuthPage() {
         logActivity('login', { email });
       }
     } catch (err: any) {
-      if (mode === 'login') logActivity('login_failed', { email, reason: err?.message });
-      toast.error(err.message || 'Authentication failed');
+      const status = err?.status || err?.statusCode;
+      const isRateLimited = status === 429 || err?.message?.toLowerCase().includes('rate limit');
+
+      if (isRateLimited) {
+        toast.error('Please wait a moment before trying again');
+      } else {
+        if (mode === 'login') logActivity('login_failed', { email, reason: err?.message });
+        toast.error(err.message || 'Authentication failed');
+      }
     } finally {
       setSubmitting(false);
     }
