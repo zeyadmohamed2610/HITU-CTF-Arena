@@ -1,0 +1,1 @@
+ALTER TABLE public.ctf_settings ADD COLUMN IF NOT EXISTS max_team_size integer NOT NULL DEFAULT 4;

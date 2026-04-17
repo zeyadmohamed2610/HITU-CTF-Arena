@@ -1,0 +1,1 @@
+ALTER TABLE public.ctf_settings ADD COLUMN IF NOT EXISTS allow_post_ctf_submissions boolean NOT NULL DEFAULT false;
