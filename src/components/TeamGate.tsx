@@ -15,7 +15,7 @@ interface TeamGateProps {
 }
 
 export function TeamGate({ children }: TeamGateProps) {
-  const { user, isAdmin } = useAuthStore();
+  const { user, isAdmin, isAuthor } = useAuthStore();
   const queryClient = useQueryClient();
   const [newTeamName, setNewTeamName] = useState('');
   const [joinCode, setJoinCode] = useState('');
@@ -104,7 +104,9 @@ export function TeamGate({ children }: TeamGateProps) {
     );
   }
 
-  if (isAdmin() || userTeam) {
+  // Admin and CTF Author don't need a team
+  // Players need a team to access the platform
+  if (isAdmin() || isAuthor() || userTeam) {
     return <>{children}</>;
   }
 
