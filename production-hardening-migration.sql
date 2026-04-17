@@ -76,59 +76,7 @@ END;
 $$;
 
 -- =========================================
--- 2. RATE LIMITING SYSTEM
--- =========================================
-
--- Submission attempts tracking table
-CREATE TABLE public.submission_attempts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  ip_address INET,
-  attempted_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  is_success BOOLEAN NOT NULL DEFAULT false
-);
-
--- Indexes for rate limiting
-CREATE INDEX idx_submission_attempts_user_time ON public.submission_attempts(user_id, attempted_at DESC);
-CREATE INDEX idx_submission_attempts_ip_time ON public.submission_attempts(ip_address, attempted_at DESC);
-
--- Rate limiting function
-CREATE OR REPLACE FUNCTION public.check_rate_limit(target_user_id UUID DEFAULT NULL, target_ip INET DEFAULT NULL)
-RETURNS BOOLEAN
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_user_id UUID;
-  v_ip INET;
-  v_user_attempts INTEGER;
-  v_ip_attempts INTEGER;
-BEGIN
-  v_user_id := COALESCE(target_user_id, auth.uid());
-  v_ip := COALESCE(target_ip, inet_client_addr());
-
-  -- Count user attempts in last minute
-  SELECT COUNT(*) INTO v_user_attempts
-  FROM public.submission_attempts
-  WHERE user_id = v_user_id
-  AND attempted_at > now() - interval '1 minute'
-  AND NOT is_success; -- Only count failed attempts for rate limiting
-
-  -- Count IP attempts in last minute
-  SELECT COUNT(*) INTO v_ip_attempts
-  FROM public.submission_attempts
-  WHERE ip_address = v_ip
-  AND attempted_at > now() - interval '1 minute'
-  AND NOT is_success;
-
-  -- Rate limits: 10 per minute per user, 20 per minute per IP
-  RETURN v_user_attempts < 10 AND v_ip_attempts < 20;
-END;
-$$;
-
--- =========================================
--- 3. POINTS SYSTEM HARDENING (OPTION A: Use Views)
+-- 2. POINTS SYSTEM HARDENING (OPTION A: Use Views)
 -- =========================================
 
 -- Remove denormalized points columns
@@ -161,7 +109,7 @@ LEFT JOIN public.solves s ON tm.user_id = s.user_id
 GROUP BY t.id, t.name, t.leader_id;
 
 -- =========================================
--- 4. AUDIT LOGGING SYSTEM
+-- 3. AUDIT LOGGING SYSTEM
 -- =========================================
 
 -- Enhanced audit logs table (already exists, enhance it)
@@ -192,10 +140,10 @@ END;
 $$;
 
 -- =========================================
--- 5. SECURE SUBMISSION PROCESS
+-- 4. SECURE SUBMISSION PROCESS
 -- =========================================
 
--- Enhanced submission function with rate limiting and logging
+-- Enhanced submission function with logging
 CREATE OR REPLACE FUNCTION public.submit_flag(
   challenge_id UUID,
   flag_text TEXT
@@ -215,13 +163,6 @@ BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Authentication required';
-  END IF;
-
-  -- Check rate limiting
-  IF NOT public.check_rate_limit(v_user_id) THEN
-    -- Log rate limit violation
-    PERFORM public.create_audit_log(v_user_id, 'rate_limit_exceeded', jsonb_build_object('type', 'submission'));
-    RAISE EXCEPTION 'Rate limit exceeded. Try again later.';
   END IF;
 
   -- Check CTF is live and user is participant
@@ -264,10 +205,6 @@ BEGIN
   WHERE c.id = challenge_id AND c.flag = flag_text;
 
   v_is_correct := (v_points IS NOT NULL);
-
-  -- Log the attempt
-  INSERT INTO public.submission_attempts (user_id, ip_address, is_success)
-  VALUES (v_user_id, inet_client_addr(), v_is_correct);
 
   -- Log the submission
   PERFORM public.create_audit_log(
@@ -320,7 +257,7 @@ END;
 $$;
 
 -- =========================================
--- 6. TEAM SYSTEM HARDENING
+-- 5. TEAM SYSTEM HARDENING
 -- =========================================
 
 -- Function to transfer team leadership
@@ -401,7 +338,7 @@ END;
 $$;
 
 -- =========================================
--- 7. RLS POLICIES - FINAL SECURE VERSION
+-- 6. RLS POLICIES - FINAL SECURE VERSION
 -- =========================================
 
 -- Drop all existing policies to start fresh
@@ -504,7 +441,7 @@ CREATE POLICY "Solves only through secure function" ON public.solves FOR INSERT
   WITH CHECK (false);  -- Force use of submit_flag() function
 
 -- =========================================
--- 8. PERFORMANCE OPTIMIZATION
+-- 7. PERFORMANCE OPTIMIZATION
 -- =========================================
 
 -- Add pagination support functions
@@ -587,7 +524,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_user_created ON public.audit_logs(user
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON public.audit_logs(action);
 
 -- =========================================
--- 9. SECURITY HARDENING
+-- 8. SECURITY HARDENING
 -- =========================================
 
 -- Function to detect suspicious activity
@@ -602,25 +539,6 @@ LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  -- Detect brute force attempts
-  SELECT
-    sa.user_id,
-    'brute_force'::TEXT as activity_type,
-    COUNT(*) as count_last_hour,
-    CASE
-      WHEN COUNT(*) > 50 THEN 'CRITICAL'
-      WHEN COUNT(*) > 20 THEN 'HIGH'
-      WHEN COUNT(*) > 10 THEN 'MEDIUM'
-      ELSE 'LOW'
-    END as risk_level
-  FROM public.submission_attempts sa
-  WHERE sa.attempted_at > now() - interval '1 hour'
-  AND NOT sa.is_success
-  GROUP BY sa.user_id
-  HAVING COUNT(*) > 5
-
-  UNION ALL
-
   -- Detect rapid team joins (possible abuse)
   SELECT
     al.user_id,
@@ -639,7 +557,7 @@ AS $$
 $$;
 
 -- =========================================
--- 10. FINAL CLEANUP
+-- 9. FINAL CLEANUP
 -- =========================================
 
 -- Ensure all triggers are in place
