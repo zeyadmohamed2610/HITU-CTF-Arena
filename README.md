@@ -431,11 +431,7 @@ npx supabase functions list
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Support
 
-For support and questions:
-- Open an issue on GitHub
-- Contact: admin@hitu-ctf.local
 
 ---
 
